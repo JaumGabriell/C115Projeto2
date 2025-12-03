@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monitor de Tombamento - Carrinho IoT</title>
+    <script src="paho-mqtt.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+        color: #333;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      header {
+        text-align: center;
+        color: white;
+        margin-bottom: 30px;
+      }
+
+      h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .status-badge {
+        display: inline-block;
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 1.2em;
+        margin-top: 10px;
+        transition: all 0.3s;
+      }
+
+      .status-ok {
+        background-color: #4caf50;
+        color: white;
+        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+      }
+
+      .status-tombado {
+        background-color: #f44336;
+        color: white;
+        animation: pulse 1s infinite;
+        box-shadow: 0 4px 15px rgba(244, 67, 54, 0.6);
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.05);
+        }
+      }
+
+      .dashboard {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s;
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+      }
+
+      .card-title {
+        font-size: 1.2em;
+        color: #667eea;
+        margin-bottom: 15px;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .sensor-value {
+        font-size: 3em;
+        font-weight: bold;
+        text-align: center;
+        margin: 20px 0;
+      }
+
+      .sensor-x {
+        color: #e74c3c;
+      }
+      .sensor-y {
+        color: #3498db;
+      }
+      .sensor-z {
+        color: #2ecc71;
+      }
+      .sensor-angle {
+        color: #f39c12;
+      }
+
+      .sensor-label {
+        text-align: center;
+        color: #666;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      .connection-status {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+
+      .connection-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        animation: blink 2s infinite;
+      }
+
+      .status-connected {
+        background-color: #4caf50;
+      }
+      .status-disconnected {
+        background-color: #f44336;
+      }
+
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      .timestamp {
+        color: #666;
+        font-size: 0.9em;
+      }
+
+      .alert-box {
+        background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 1.3em;
+        font-weight: bold;
+        box-shadow: 0 10px 30px rgba(244, 67, 54, 0.4);
+        display: none;
+        animation: slideDown 0.5s;
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .alert-box.show {
+        display: block;
+      }
+
+      .visual-indicator {
+        width: 100%;
+        height: 200px;
+        background: #f5f5f5;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 5em;
+        transition: all 0.3s;
+      }
+
+      .visual-ok {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+      }
+
+      .visual-tombado {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        animation: shake 0.5s infinite;
+      }
+
+      @keyframes shake {
+        0%,
+        100% {
+          transform: rotate(0deg);
+        }
+        25% {
+          transform: rotate(-5deg);
+        }
+        75% {
+          transform: rotate(5deg);
+        }
+      }
+
+      footer {
+        text-align: center;
+        color: white;
+        margin-top: 30px;
+        font-size: 0.9em;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🚗 Monitor de Tombamento</h1>
+        <div class="status-badge" id="statusBadge">AGUARDANDO DADOS...</div>
+      </header>
+
+      <div class="connection-status">
+        <div class="connection-indicator">
+          <div class="status-dot status-disconnected" id="connectionDot"></div>
+          <span id="connectionText">Conectando ao broker MQTT...</span>
+        </div>
+        <div class="timestamp" id="lastUpdate">Sem dados</div>
+      </div>
+
+      <div class="alert-box" id="alertBox">🚨 TOMBAMENTO DETECTADO! 🚨</div>
+
+      <div class="dashboard">
+        <div class="card">
+          <div class="card-title">Acelerômetro X</div>
+          <div class="sensor-value sensor-x" id="valueX">--</div>
+          <div class="sensor-label">Eixo X (Left/Right)</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Acelerômetro Y</div>
+          <div class="sensor-value sensor-y" id="valueY">--</div>
+          <div class="sensor-label">Eixo Y (Forward/Back)</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Acelerômetro Z</div>
+          <div class="sensor-value sensor-z" id="valueZ">--</div>
+          <div class="sensor-label">Eixo Z (Up/Down)</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Inclinação Total</div>
+          <div class="sensor-value sensor-angle" id="valueAngle">--</div>
+          <div class="sensor-label">Graus (°)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Indicador Visual</div>
+        <div class="visual-indicator visual-ok" id="visualIndicator">✅</div>
+      </div>
+
+      <footer>
+        <p>Sistema IoT de Detecção de Tombamento | C115 - Projeto 2</p>
+        <p>FRDM-KL25Z → Raspberry Pi 4 → MQTT → Dashboard Web</p>
+      </footer>
+    </div>
+
+    <script>
+      // ====== CONFIGURAÇÃO DO MQTT ======
+      const MQTT_BROKER = "192.168.4.1"; // IP do Raspberry Pi
+      const MQTT_PORT = 9001; // Porta WebSocket (precisa configurar no mosquitto)
+      const MQTT_TOPIC = "carrinho/telemetria";
+
+      // ====== ELEMENTOS DO DOM ======
+      const statusBadge = document.getElementById("statusBadge");
+      const connectionDot = document.getElementById("connectionDot");
+      const connectionText = document.getElementById("connectionText");
+      const lastUpdate = document.getElementById("lastUpdate");
+      const alertBox = document.getElementById("alertBox");
+      const valueX = document.getElementById("valueX");
+      const valueY = document.getElementById("valueY");
+      const valueZ = document.getElementById("valueZ");
+      const valueAngle = document.getElementById("valueAngle");
+      const visualIndicator = document.getElementById("visualIndicator");
+
+      // ====== CRIAR CLIENTE MQTT ======
+      const clientId = "dashboard_" + Math.random().toString(16).substr(2, 8);
+      console.log("🔧 Criando cliente MQTT:", clientId);
+      console.log("🔧 Broker:", MQTT_BROKER + ":" + MQTT_PORT);
+      console.log(
+        "🔧 URL completa: ws://" + MQTT_BROKER + ":" + MQTT_PORT + "/mqtt"
+      );
+      const client = new Paho.MQTT.Client(
+        MQTT_BROKER,
+        MQTT_PORT,
+        "/mqtt",
+        clientId
+      );
+
+      // ====== CALLBACKS DO MQTT ======
+      client.onConnectionLost = (responseObject) => {
+        console.error("Conexão perdida:", responseObject.errorMessage);
+        connectionDot.className = "status-dot status-disconnected";
+        connectionText.textContent = "Desconectado";
+      };
+
+      client.onMessageArrived = (message) => {
+        console.log("Mensagem recebida:", message.payloadString);
+
+        try {
+          const data = JSON.parse(message.payloadString);
+          updateDashboard(data);
+        } catch (error) {
+          console.error("Erro ao parsear JSON:", error);
+        }
+      };
+
+      // ====== CONECTAR AO BROKER ======
+      function connect() {
+        console.log("🔌 Tentando conectar ao broker MQTT...");
+        console.log("🔌 ws://" + MQTT_BROKER + ":" + MQTT_PORT);
+
+        client.connect({
+          timeout: 10,
+          useSSL: false,
+          onSuccess: () => {
+            console.log("✅ CONECTADO COM SUCESSO!");
+            connectionDot.className = "status-dot status-connected";
+            connectionText.textContent = "Conectado";
+
+            // Assinar o tópico
+            client.subscribe(MQTT_TOPIC);
+            console.log("📡 Assinado no tópico:", MQTT_TOPIC);
+          },
+          onFailure: (error) => {
+            console.error("❌ FALHA NA CONEXÃO:");
+            console.error("   Código:", error.errorCode);
+            console.error("   Mensagem:", error.errorMessage);
+            console.error(
+              "   Verifique se a porta 9001 (WebSocket) está aberta no Mosquitto"
+            );
+            connectionDot.className = "status-dot status-disconnected";
+            connectionText.textContent = "Erro: " + error.errorMessage;
+
+            // Tentar reconectar após 5 segundos
+            setTimeout(connect, 5000);
+          },
+        });
+      }
+
+      // ====== ATUALIZAR DASHBOARD ======
+      function updateDashboard(data) {
+        // Ignorar mensagens sem dados do acelerômetro (mensagens simplificadas de alerta)
+        if (!data.acelerometro || !data.timestamp) {
+          console.log(
+            "⚠️ Mensagem simplificada ignorada (sem acelerometro/timestamp)"
+          );
+          return;
+        }
+
+        // Atualizar timestamp
+        const now = new Date(data.timestamp * 1000); // Multiplicar por 1000 para converter de Unix para JS
+        lastUpdate.textContent = now.toLocaleTimeString("pt-BR");
+
+        // Atualizar valores dos sensores
+        valueX.textContent = data.acelerometro.x;
+        valueY.textContent = data.acelerometro.y;
+        valueZ.textContent = data.acelerometro.z;
+        valueAngle.textContent = data.inclinacao.toFixed(1) + "°";
+
+        // Atualizar status - verificar se alerta contém "TOMBAMENTO"
+        const isTombado = data.alerta && data.alerta.includes("TOMBAMENTO");
+
+        if (isTombado) {
+          statusBadge.textContent = "🚨 TOMBADO";
+          statusBadge.className = "status-badge status-tombado";
+          visualIndicator.textContent = "⚠️";
+          visualIndicator.className = "visual-indicator visual-tombado";
+          alertBox.classList.add("show");
+        } else {
+          statusBadge.textContent = "✅ OK";
+          statusBadge.className = "status-badge status-ok";
+          visualIndicator.textContent = "✅";
+          visualIndicator.className = "visual-indicator visual-ok";
+          alertBox.classList.remove("show");
+        }
+      }
+
+      // ====== INICIAR CONEXÃO ======
+      connect();
+    </script>
+  </body>
+</html>
